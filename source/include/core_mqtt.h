@@ -62,6 +62,7 @@
 struct MQTTPubAckInfo;
 struct MQTTContext;
 struct MQTTDeserializedInfo;
+struct MQTTAckInfo;
 
 /**
  * @ingroup mqtt_callback_types
@@ -163,6 +164,32 @@ typedef struct MQTTPubAckInfo
     MQTTQoS_t qos;                   /**< @brief The QoS of the original PUBLISH. */
     MQTTPublishState_t publishState; /**< @brief The current state of the publish process. */
 } MQTTPubAckInfo_t;
+
+/**
+ * @ingroup mqtt_struct_types
+ * @brief To store the user property and the reason string of the acknowledgments.
+ */
+typedef struct MQTTAckInfo
+{
+    /**
+     * @brief Reason String is a human readable string designed for diagnostics.
+     */
+    const char* pReasonString;
+     /**
+     * @brief Length of reason string.
+     */
+    uint16_t reasonStringLength;
+     /**
+     * @brief Pointer to the user properties.
+     */
+    MQTTUserProperty_t* pUserProperty;
+     /**
+     * @brief  Number of user properties.
+     */
+    uint32_t userPropertySize;
+
+} MQTTAckInfo_t;
+
 
 
 /**

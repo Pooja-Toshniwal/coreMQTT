@@ -6,7 +6,7 @@
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
- * the Software without restriction, including without limitation the rights to
+ * the Software without restriction, including without limitation the rights to8
  * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
  * the Software, and to permit persons to whom the Software is furnished to do so,
  * subject to the following conditions:
@@ -485,8 +485,12 @@ typedef struct MQTTPublishInfo
      * @brief Payload Format Indicator.
      **/
       uint8_t payloadFormat;
+      /**
+     * @brief Topic alias value.
+     **/
+      uint16_t topicAlias;
      /**
-     * @brief e Four Byte Integer representing the Message Expiry Interval.
+     * @brief Four Byte Integer representing the Message Expiry Interval.
      */
     uint32_t msgExpiryInterval;
      /**
