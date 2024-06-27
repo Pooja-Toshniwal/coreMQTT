@@ -212,6 +212,11 @@
  */
     #define MQTT_CORRELATION_DATA_ID    ( 0x09 )
 
+/**
+ * @brief Topic alias id.
+ */
+    #define MQTT_TOPIC_ALIAS_ID         ( 0x23 )
+
 /*CONNACK PROPERTIES*/
 
 /**
@@ -876,6 +881,13 @@ static MQTTStatus_t deserializePingresp( const MQTTPacketInfo_t * pPingresp );
     static MQTTStatus_t deserializeConnackV5( MQTTConnectProperties_t * pConnackProperties,
                                               size_t length,
                                               const uint8_t * const * pIndex );
+
+MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
+                                        size_t * pRemainingLength,
+                                        size_t * pPacketSize , 
+                                        uint16_t topicAliasMax, 
+                                        uint32_t maxPacketSize);
+
 /*-----------------------------------------------------------*/
 
     MQTTStatus_t MQTTV5_GetConnectPacketSize( const MQTTConnectInfo_t * pConnectInfo,
@@ -2039,7 +2051,7 @@ static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_
         bool serverRef = false;
         bool authMethod = false;
         bool authData = false;
-        MQTTUserProperty_t * userProperty = pConnackProperties->pIncomingUserProperty;
+        MQTTUserProperty_t * pUserProperty = pConnackProperties->pIncomingUserProperty;
 
         pVariableHeader = &pVariableHeader[ remainingLengthEncodedSize( propertyLength ) ];
 
@@ -2085,8 +2097,8 @@ static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_
                     break;
 
                 case MQTT_USER_PROPERTY_ID:
-                    status = decodeutf_8pair( userProperty, &propertyLength, &pVariableHeader );
-                    userProperty++;
+                    status = decodeutf_8pair( pUserProperty, &propertyLength, &pVariableHeader );
+                    pUserProperty++;
                     pConnackProperties->incomingUserPropSize++;
                     break;
 
@@ -2209,7 +2221,8 @@ static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_
     
 static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
-                                        size_t * pPacketSize )
+                                        size_t * pPacketSize,
+                                        uint32_t maxPacketSize )
 {
     bool status = true;
     size_t packetSize = 0, payloadLimit = 0;
@@ -2231,11 +2244,11 @@ static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPub
     }
   
     /*Calculate the size of the publish properties*/
-    status = GetPublishPropertiesSize(pPublishInfo);
+    status = MQTT_GetPublishPropertiesSize(pPublishInfo);
 
     if(status == MQTTSuccess){
-     packetSize += pPublishInfo->propertylength;
-     packetSize += remainingLengthEncodedSize (pPublishinfo->propertyLength);
+     packetSize += pPublishInfo->propertyLength;
+     packetSize += remainingLengthEncodedSize (pPublishInfo->propertyLength);
     /* Calculate the maximum allowed size of the payload for the given parameters.
      * This calculation excludes the "Remaining length" encoding, whose size is not
      * yet known. */
@@ -2273,7 +2286,7 @@ static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPub
                         ( unsigned long ) pPublishInfo->payloadLength,
                         ( unsigned long ) payloadLimit,
                         MQTT_MAX_REMAINING_LENGTH ) );
-            status = false;
+            status = MQTTBadParameter;
         }
         else
         {
@@ -2282,20 +2295,26 @@ static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPub
             *pRemainingLength = packetSize;
 
             packetSize += 1U + remainingLengthEncodedSize( packetSize );
+            if(packetSize > maxPacketSize){
+                LogError(("Packet size is greater than the allowed maximum packet size."));
+                status = MQTTBadParameter;
+            }
             *pPacketSize = packetSize;
         }
     }
-
+    if(status== MQTTSuccess){
     LogDebug( ( "PUBLISH packet remaining length=%lu and packet size=%lu.",
                 ( unsigned long ) *pRemainingLength,
                 ( unsigned long ) *pPacketSize ) );
-                
+    }          
     return status;
 }
 
 MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
-                                        size_t * pPacketSize )
+                                        size_t * pPacketSize , 
+                                        uint16_t topicAliasMax, 
+                                        uint32_t maxPacketSize)
 {
     MQTTStatus_t status = MQTTSuccess;
 
@@ -2323,9 +2342,16 @@ MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo
                     ( unsigned short ) pPublishInfo->topicNameLength ) );
         status = MQTTBadParameter;
     }
+    else if(maxPacketSize == 0U){
+         status = MQTTBadParameter;
+    }
+    else if(pPublishInfo->topicAlias > topicAliasMax){
+        LogError(("Invalid topic alias."));
+        status = MQTTBadParameter;
+    }
     else
     {
-        status = calculatePublishPacketSizeV5(pPublishInfo, pRemainingLength, pPacketSize);
+        status = calculatePublishPacketSizeV5(pPublishInfo, pRemainingLength, pPacketSize, maxPacketSize);
 
     }
 
@@ -2383,7 +2409,6 @@ MQTTStatus_t MQTTV5_SerializePublish( const MQTTPublishInfo_t * pPublishInfo,
                     ( unsigned short ) pPublishInfo->topicNameLength ) );
         status = MQTTBadParameter;
     }
-    }
     else if( ( pPublishInfo->qos != MQTTQoS0 ) && ( packetId == 0U ) )
     {
         LogError( ( "Packet ID is 0 for PUBLISH with QoS=%u.",
@@ -2425,7 +2450,135 @@ MQTTStatus_t MQTTV5_SerializePublish( const MQTTPublishInfo_t * pPublishInfo,
     return status;
 }
 
+static MQTTStatus_t deserializeSimpleAckV5( const MQTTPacketInfo_t * pAck,
+                                          uint16_t * pPacketIdentifier, MQTTAckInfo_t *pAckInfo, uint8_t requestProblem )
+{
+    MQTTStatus_t status = MQTTSuccess;
+    
+    assert( pAck != NULL );
+    assert( pPacketIdentifier != NULL );
+    assert(pAckInfo!= NULL);
+    const uint8_t * pIndex = pAck->pRemainingData;
+    size_t propertyLength =0;
+    MQTTUserProperty_t * pUserProperty = pAckInfo->pUserProperty;
 
+    if(pAck->remainingLength< 2U){
+        status = MQTTMalformedPacket;
+    }
+
+   if(status == MQTTSuccess){
+        /* Extract the packet identifier (third and fourth bytes) from ACK. */
+        *pPacketIdentifier = UINT16_DECODE(pIndex);
+
+        LogDebug( ( "Packet identifier %hu.",
+                    ( unsigned short ) *pPacketIdentifier ) );
+
+        /* Packet identifier cannot be 0. */
+        if( *pPacketIdentifier == 0U )
+        {
+            LogError( ( "Packet identifier cannot be 0." ) );
+            status = MQTTBadResponse;
+        }
+
+    }
+    if((status == MQTTSuccess) && (pAck->remainingLength > 2)){
+        pAckInfo->reasonCode = *pIndex;
+        pIndex += 1;
+    }
+    if((pAck->remainingLength > 3)){
+        if(requestProblem == 0){
+        status = MQTTProtocolError;
+        }
+        else{
+        status =  decodeVariableLength(pIndex,&propertyLength);
+        if(status == MQTTSuccess){
+        pIndex= &pIndex[remainingLengthEncodedSize(propertyLength)];
+        if(pAck->remainingLength !=  propertyLength + remainingLengthEncodedSize(propertyLength)+ 2){
+            status = MQTTMalformedPacket;
+        }
+        else{
+            while((propertyLength>0) && (status == MQTTSuccess)){
+             uint8_t packetId = *pIndex;
+             bool reasonString;
+             pIndex = &pIndex[1];
+             propertyLength -= sizeof( uint8_t );
+             switch(packetId){
+                case MQTT_REASON_STRING_ID:
+                    status = decodeutf_8( &pAckInfo->pReasonString, &pAckInfo->reasonStringLength, &propertyLength, &reasonString, &pIndex );
+                    break;  
+                case MQTT_USER_PROPERTY_ID:
+                    status = decodeutf_8pair( pUserProperty, &propertyLength, &pIndex );
+                    pUserProperty++;
+                    pAckInfo->userPropertySize++;
+                    break;        
+             }
+            }
+        }
+    }
+        }
+    }
+    
+    return status;
+}
+
+
+MQTTStatus_t MQTTV5_DeserializeAck( const MQTTPacketInfo_t * pIncomingPacket,
+                                  uint16_t * pPacketId, MQTTAckInfo_t *pAckInfo, uint8_t requestProblem)
+{
+    MQTTStatus_t status = MQTTSuccess;
+
+    if( pIncomingPacket == NULL )
+    {
+        LogError( ( "pIncomingPacket cannot be NULL." ) );
+        status = MQTTBadParameter;
+    }
+
+    /* Pointer for packet identifier cannot be NULL for packets other than
+     * CONNACK and PINGRESP. */
+    else if (pPacketId == NULL ) 
+    {
+        LogError( ( "pPacketId cannot be NULL for packet type %02x.",
+                    ( unsigned int ) pIncomingPacket->type ) );
+        status = MQTTBadParameter;
+    }
+
+    /* Pointer for remaining data cannot be NULL for packets other
+     * than PINGRESP. */
+    else if( ( pIncomingPacket->pRemainingData == NULL ) &&
+             ( pIncomingPacket->type != MQTT_PACKET_TYPE_PINGRESP ) )
+    {
+        LogError( ( "Remaining data of incoming packet is NULL." ) );
+        status = MQTTBadParameter;
+    }
+    else
+    {
+        /* Make sure response packet is a valid ack. */
+        switch( pIncomingPacket->type )
+        {
+
+            case MQTT_PACKET_TYPE_SUBACK:
+                status = deserializeSuback( pIncomingPacket, pPacketId );
+                break;
+
+            case MQTT_PACKET_TYPE_UNSUBACK:
+            case MQTT_PACKET_TYPE_PUBACK:
+            case MQTT_PACKET_TYPE_PUBREC:
+            case MQTT_PACKET_TYPE_PUBREL:
+            case MQTT_PACKET_TYPE_PUBCOMP:
+                status = deserializeSimpleAckV5( pIncomingPacket, pPacketId ,pAckInfo,requestProblem);
+                break;
+
+            /* Any other packet type is invalid. */
+            default:
+                LogError( ( "IotMqtt_DeserializeResponse() called with unknown packet type:(%02x).",
+                            ( unsigned int ) pIncomingPacket->type ) );
+                status = MQTTBadResponse;
+                break;
+        }
+    }
+
+    return status;
+}
 
 #endif /* if ( MQTT_VERSION_5_ENABLED ) */
 /*-----------------------------------------------------------*/

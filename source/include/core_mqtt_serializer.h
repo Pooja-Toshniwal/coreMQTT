@@ -83,6 +83,7 @@ struct MQTTPacketInfo;
 struct MQTTConnectProperties;
 struct MQTTUserProperty;
 struct MQTTAuthInfo;
+struct MQTTAckInfo;
 /**
  * @ingroup mqtt_enum_types
  * @brief Return codes from MQTT functions.
@@ -114,6 +115,7 @@ typedef enum MQTTStatus
  * @brief Reason Code is a one byte unsigned value that indicates the result of an operation.
  */
 typedef enum ReasonCode {
+    MQTT_REASON_SUCCESS = 0x00,
     MQTT_REASON_UNSPECIFIED_ERR = 0x80,
     MQTT_REASON_MALFORMED_PACKET = 0x81,
     MQTT_REASON_PROTOCOL_ERR = 0x82,
@@ -430,6 +432,34 @@ typedef struct MQTTConnectProperties
 
 
 } MQTTConnectProperties_t;
+
+   /**
+ * @ingroup mqtt_struct_types
+ * @brief Struct to hold acknowledgment properties.
+ */
+typedef struct MQTTAckInfo
+{
+    /**
+     * @brief Response code;
+     */
+    ReasonCode_t reasonCode;
+     /**
+     * @brief To store a key value pair.
+     */
+    MQTTUserProperty_t* pUserProperty;
+    /**
+     * @brief Number of user properties.
+     */
+    uint32_t userPropertySize;
+     /**
+     * @brief Reason String is a human readable string designed for diagnostics.
+     */
+    const char* pReasonString;
+     /**
+     * @brief Length of reason string.
+     */
+    uint16_t reasonStringLength;
+} MQTTAckInfo_t;
 
 /**
  * @ingroup mqtt_struct_types
@@ -1803,6 +1833,12 @@ MQTTStatus_t MQTTV5_SerializeConnect(const MQTTConnectInfo_t* pConnectInfo,
     size_t remainingLength,
     const MQTTFixedBuffer_t* pFixedBuffer);
 /* @[declare_mqttv5_serializeconnect] */
+
+MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
+                                        size_t * pRemainingLength,
+                                        size_t * pPacketSize , 
+                                        uint16_t topicAliasMax, 
+                                        uint32_t maxPacketSize);
 
 /* *INDENT-OFF* */
 #ifdef __cplusplus
