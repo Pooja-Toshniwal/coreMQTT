@@ -41,8 +41,6 @@
 /* Include transport interface. */
 #include "transport_interface.h"
 
-/* Include transport interface. */
-
 /**
  * @cond DOXYGEN_IGNORE
  * The current version of this library.
@@ -62,6 +60,7 @@
 struct MQTTPubAckInfo;
 struct MQTTContext;
 struct MQTTDeserializedInfo;
+struct MQTTAckInfo;
 
 /**
  * @ingroup mqtt_callback_types
@@ -265,6 +264,10 @@ typedef struct MQTTDeserializedInfo
     uint16_t packetIdentifier;          /**< @brief Packet ID of deserialized packet. */
     MQTTPublishInfo_t * pPublishInfo;   /**< @brief Pointer to deserialized publish info. */
     MQTTStatus_t deserializationResult; /**< @brief Return code of deserialization. */
+    #if(MQTT_VERSION_5_ENABLED)
+    MQTTAckInfo_t *pAckInfo;
+    MQTTAckInfo_t *pNextAckInfo;
+    #endif
 } MQTTDeserializedInfo_t;
 
 /**
@@ -632,7 +635,7 @@ MQTTStatus_t MQTT_Subscribe( MQTTContext_t * pContext,
  */
 /* @[declare_mqtt_publish] */
 MQTTStatus_t MQTT_Publish( MQTTContext_t * pContext,
-                           const MQTTPublishInfo_t * pPublishInfo,
+                           MQTTPublishInfo_t * pPublishInfo,
                            uint16_t packetId );
 /* @[declare_mqtt_publish] */
 
