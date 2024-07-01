@@ -246,7 +246,6 @@ typedef struct MQTTContext
     uint32_t pingReqSendTimeMs;    /**< @brief Timestamp of the last sent PINGREQ. */
     bool waitingForPingResp;       /**< @brief If the library is currently awaiting a PINGRESP. */
     #if ( MQTT_VERSION_5_ENABLED )
-
         /**
          * @brief Connect and Connack Properties.
          */
@@ -634,7 +633,7 @@ MQTTStatus_t MQTT_Subscribe( MQTTContext_t * pContext,
  */
 /* @[declare_mqtt_publish] */
 MQTTStatus_t MQTT_Publish( MQTTContext_t * pContext,
-                           const MQTTPublishInfo_t * pPublishInfo,
+                           MQTTPublishInfo_t * pPublishInfo,
                            uint16_t packetId );
 /* @[declare_mqtt_publish] */
 

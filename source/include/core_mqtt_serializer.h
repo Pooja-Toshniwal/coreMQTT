@@ -116,6 +116,7 @@ typedef enum MQTTStatus
  */
 typedef enum ReasonCode {
     MQTT_REASON_SUCCESS = 0x00,
+    MQTT_REASON_NO_MATCHING_SUBSCRIBERS =0x10,
     MQTT_REASON_UNSPECIFIED_ERR = 0x80,
     MQTT_REASON_MALFORMED_PACKET = 0x81,
     MQTT_REASON_PROTOCOL_ERR = 0x82,
@@ -296,6 +297,11 @@ typedef struct MQTTUserProperty
     uint16_t valueLength;
 } MQTTUserProperty_t;
 
+typedef struct MQTTUserProperties{
+    MQTTUserProperty_t userProperty[MAX_USER_PROPERTY];
+    uint32_t count;
+} MQTTUserProperties_t;
+
    /**
  * @ingroup mqtt_struct_types
  * @brief Struct to hold connect and connack properties.
@@ -338,7 +344,7 @@ typedef struct MQTTConnectProperties
      /**
      * @brief   Pointer to the outgoing user properties.
      */
-    MQTTUserProperty_t *pOutgoingUserProperty;
+    MQTTUserProperties_t *pOutgoingUserProperty;
      /**
      * @brief  Total number of outgoing user properties.
      */
@@ -388,7 +394,7 @@ typedef struct MQTTConnectProperties
       /**
      * @brief Pointer to the incoming user properties.
      */
-    MQTTUserProperty_t *pIncomingUserProperty;
+    MQTTUserProperty_t pIncomingUserProperty[MAX_USER_PROPERTY];
      /**
      * @brief  Total number of user properties received.
      */
@@ -446,11 +452,7 @@ typedef struct MQTTAckInfo
      /**
      * @brief To store a key value pair.
      */
-    MQTTUserProperty_t* pUserProperty;
-    /**
-     * @brief Number of user properties.
-     */
-    uint32_t userPropertySize;
+    MQTTUserProperties* pUserProperty;
      /**
      * @brief Reason String is a human readable string designed for diagnostics.
      */
@@ -1834,11 +1836,14 @@ MQTTStatus_t MQTTV5_SerializeConnect(const MQTTConnectInfo_t* pConnectInfo,
     const MQTTFixedBuffer_t* pFixedBuffer);
 /* @[declare_mqttv5_serializeconnect] */
 
-MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
+MQTTStatus_t MQTTV5_GetPublishPacketSize(MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
                                         size_t * pPacketSize , 
                                         uint16_t topicAliasMax, 
                                         uint32_t maxPacketSize);
+
+MQTTStatus_t MQTTV5_DeserializeAck( const MQTTPacketInfo_t * pIncomingPacket,
+                                  uint16_t * pPacketId, MQTTAckInfo_t *pAckInfo, uint8_t requestProblem);
 
 /* *INDENT-OFF* */
 #ifdef __cplusplus

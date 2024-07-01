@@ -882,7 +882,7 @@ static MQTTStatus_t deserializePingresp( const MQTTPacketInfo_t * pPingresp );
                                               size_t length,
                                               const uint8_t * const * pIndex );
 
-MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
+MQTTStatus_t MQTTV5_GetPublishPacketSize(MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
                                         size_t * pPacketSize , 
                                         uint16_t topicAliasMax, 
@@ -1067,7 +1067,7 @@ MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo
 
         return pIndexLocal;
     }
-static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_t * pIndex){
+static uint8_t * serializePublishProperties(const MQTTPublishInfo_t *pWillInfo, uint8_t * pIndex){
         pIndex = MQTT_SerializePublishProperties( pWillInfo, pIndex );
 
                     /*Serialize the provided will properties which has variable length.*/
@@ -1260,7 +1260,7 @@ static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_
         return status;
     }
 
-    static MQTTStatus_t MQTT_GetPublishPropertiesSize( MQTTPublishInfo_t * pPublishProperties )
+    static MQTTStatus_t MQTT_GetPublishPropertiesSize(MQTTPublishInfo_t * pPublishProperties )
     {
         size_t propertyLength = 0U;
         MQTTStatus_t status = MQTTSuccess;
@@ -2219,7 +2219,7 @@ static uint8_t * serializePublishProperties(MQTTPublishInfo_t *pWillInfo, uint8_
         return status;
     }
     
-static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPublishInfo,
+static MQTTStatus_t calculatePublishPacketSizeV5(MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
                                         size_t * pPacketSize,
                                         uint32_t maxPacketSize )
@@ -2310,7 +2310,7 @@ static MQTTStatus_t calculatePublishPacketSizeV5( const MQTTPublishInfo_t * pPub
     return status;
 }
 
-MQTTStatus_t MQTTV5_GetPublishPacketSize( const MQTTPublishInfo_t * pPublishInfo,
+MQTTStatus_t MQTTV5_GetPublishPacketSize(MQTTPublishInfo_t * pPublishInfo,
                                         size_t * pRemainingLength,
                                         size_t * pPacketSize , 
                                         uint16_t topicAliasMax, 
@@ -2450,17 +2450,49 @@ MQTTStatus_t MQTTV5_SerializePublish( const MQTTPublishInfo_t * pPublishInfo,
     return status;
 }
 
+static MQTTStatus_t logAckResponseV5(ReasonCode_t reasonCode){
+    MQTTStatus_t status = MQTTServerRefused;
+    switch(reasonCode){
+    case MQTT_REASON_SUCCESS:
+        status = MQTTSuccess;
+    case MQTT_REASON_NO_MATCHING_SUBSCRIBERS:
+        LogDebug(("Connection accepted: No matching subscribers."));
+        status = MQTTSuccess;
+    case MQTT_REASON_UNSPECIFIED_ERR:
+        LogError( ( "Connection refused: Connection rate exceeded." ) );
+        break;
+    case MQTT_REASON_IMPL_SPECIFIC_ERR:
+        LogError( ( "Connection refused:  The PUBLISH is valid but the receiver is not willing to 
+accept it." ) );
+        break;
+    case MQTT_REASON_NOT_AUTHORIZED:
+        LogError( ( "Connection refused: The PUBLISH is not authorized." ) );
+        break;
+    case MQTT_REASON_TOPIC_NAME_INVALID:
+        LogError( ( "Connection refused: Topic Name not accepted." ) );
+        break;
+    case MQTT_REASON_PACKET_ID_IN_USE:
+        LogError( ( "Connection refused: The Packet Identifier is already in use. " ) );
+        break;
+    case MQTT_REASON_QUOTA_EXCEEDED:
+        LogError( ( "Connection refused: Quota exceeded." ) );
+        break;
+    case MQTT_REASON_PAYLOAD_FORMAT_INVALID:
+        LogError( ( "Connection refused: Payload format indicator is invalid." ) );
+        break;
+    default:
+    status = MQTTProtocolError;
+    break;
+    }
+}
+
 static MQTTStatus_t deserializeSimpleAckV5( const MQTTPacketInfo_t * pAck,
                                           uint16_t * pPacketIdentifier, MQTTAckInfo_t *pAckInfo, uint8_t requestProblem )
 {
     MQTTStatus_t status = MQTTSuccess;
-    
-    assert( pAck != NULL );
-    assert( pPacketIdentifier != NULL );
-    assert(pAckInfo!= NULL);
     const uint8_t * pIndex = pAck->pRemainingData;
-    size_t propertyLength =0;
-    MQTTUserProperty_t * pUserProperty = pAckInfo->pUserProperty;
+    size_t propertyLength = 0;
+    MQTTUserProperty_t * pUserProperty = pAckInfo->pUserProperty->userProperty;
 
     if(pAck->remainingLength< 2U){
         status = MQTTMalformedPacket;
@@ -2486,7 +2518,7 @@ static MQTTStatus_t deserializeSimpleAckV5( const MQTTPacketInfo_t * pAck,
         pIndex += 1;
     }
     if((pAck->remainingLength > 3)){
-        if(requestProblem == 0){
+        if(requestProblem == false){
         status = MQTTProtocolError;
         }
         else{
@@ -2507,9 +2539,7 @@ static MQTTStatus_t deserializeSimpleAckV5( const MQTTPacketInfo_t * pAck,
                     status = decodeutf_8( &pAckInfo->pReasonString, &pAckInfo->reasonStringLength, &propertyLength, &reasonString, &pIndex );
                     break;  
                 case MQTT_USER_PROPERTY_ID:
-                    status = decodeutf_8pair( pUserProperty, &propertyLength, &pIndex );
-                    pUserProperty++;
-                    pAckInfo->userPropertySize++;
+                    status = decodeutf_8pair( pAckInfo->pUserProperty,pAckInfo->pUserProperty->count &propertyLength, &pIndex );
                     break;        
              }
             }
@@ -2563,9 +2593,24 @@ MQTTStatus_t MQTTV5_DeserializeAck( const MQTTPacketInfo_t * pIncomingPacket,
             case MQTT_PACKET_TYPE_UNSUBACK:
             case MQTT_PACKET_TYPE_PUBACK:
             case MQTT_PACKET_TYPE_PUBREC:
+                status = deserializeSimpleAckV5( pIncomingPacket, pPacketId ,pAckInfo,requestProblem);
+                if(status == MQTTSuccess){
+                   status = logAckResponseV5(pAckInfo->reasonCode);
+                }
+                break;
             case MQTT_PACKET_TYPE_PUBREL:
             case MQTT_PACKET_TYPE_PUBCOMP:
-                status = deserializeSimpleAckV5( pIncomingPacket, pPacketId ,pAckInfo,requestProblem);
+                 status = deserializeSimpleAckV5( pIncomingPacket, pPacketId ,pAckInfo,requestProblem);
+                 if(status == MQTTSuccess){
+                  if(pAckInfo->reasonCode ==  0x00 || pAckInfo->reasonCode == 0x92 ){
+                    LogDebug(("Reason code : %d.",
+                    (unsigned long int) pAckInfo->reasonCode));
+                    status = MQTTServerRefused;
+                  }
+                  else{
+                    status = MQTTProtocolError
+                  }
+                 }
                 break;
 
             /* Any other packet type is invalid. */
@@ -2576,6 +2621,7 @@ MQTTStatus_t MQTTV5_DeserializeAck( const MQTTPacketInfo_t * pIncomingPacket,
                 break;
         }
     }
+
 
     return status;
 }

@@ -29,11 +29,11 @@
 #include <string.h>
 #include <assert.h>
 
+#include "core_mqtt.h"
 #include "core_mqtt_state.h"
 
 /* Include config defaults header to get default values of configs. */
 #include "core_mqtt_config_defaults.h"
-#include "core_mqtt_serializer.h"
 
 #ifndef MQTT_PRE_SEND_HOOK
 
@@ -1989,10 +1989,11 @@ static MQTTStatus_t handlePublishAcks( MQTTContext_t * pContext,
     MQTTPubAckType_t ackType;
     MQTTEventCallback_t appCallback;
     MQTTDeserializedInfo_t deserializedInfo;
+    ReasonCode_t reasonCode = MQTT_REASON_SUCCESS;
+    #if(MQTT_VERSION_5_ENABLED)
     MQTTAckInfo_t ackInfo;
     memset(&ackInfo,0x0,sizeof(ackInfo));
-    MQTTUserProperty_t userProperty[MAX_USER_PROPERTY];
-    ackInfo.pUserProperty = userProperty;
+    #endif
     assert( pContext != NULL );
     assert( pIncomingPacket != NULL );
     assert( pContext->appCallback != NULL );
@@ -2031,6 +2032,9 @@ static MQTTStatus_t handlePublishAcks( MQTTContext_t * pContext,
                         " failed with error %s.",
                         ( unsigned short ) packetIdentifier,
                         MQTT_Status_strerror( status ) ) );
+            #if(MQTT_VERSION_5_ENABLED)
+            reasonCode = MQTT_REASON_PACKET_ID_NOT_FOUND;
+            #endif
         }
     }
 
@@ -3350,7 +3354,7 @@ MQTTStatus_t MQTT_Subscribe( MQTTContext_t * pContext,
 /*-----------------------------------------------------------*/
 
 MQTTStatus_t MQTT_Publish( MQTTContext_t * pContext,
-                           const MQTTPublishInfo_t * pPublishInfo,
+                         MQTTPublishInfo_t * pPublishInfo,
                            uint16_t packetId )
 {
     size_t headerSize = 0UL;
